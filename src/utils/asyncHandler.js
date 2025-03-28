@@ -2,8 +2,10 @@
 
 //method 2 :- m2 of making async handler using promise
 
-const asyncHandler = (requestHandler) => (req, res, next) => {
-    Promise.resolve(requestHandler(req, res, next)).catch((error) => next(error));
+const asyncHandler = (requestHandler) => {
+    return (req, res, next) => {
+        Promise.resolve(requestHandler(req, res, next)).catch((error) => next(error));
+    }
 }
 
 export { asyncHandler }
