@@ -22,3 +22,5 @@ const uploadOnCloudinary = async (localFilePath) => {
         console.log("error while uploading file on cloudinary", error);
     }
 }
+
+export { uploadOnCloudinary }
