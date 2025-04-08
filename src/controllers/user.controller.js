@@ -1,4 +1,5 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
+import mongoose from "mongoose"
 import { ApiError } from "../utils/ApiError.js"
 import { User } from "../models/user.model.js"
 import { uploadOnCloudinary } from "../utils/cloudinary.js"
@@ -144,8 +145,8 @@ const logoutUser = asyncHandler(async (req, res) => {
     await User.findByIdAndUpdate(
         req.user._id,
         {
-            $set: {
-                refreshToken: undefined
+            $unset: {
+                refreshToken: 1
             }
         },
         {
@@ -213,7 +214,7 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
         throw new ApiError(401, "Invalid password")
     }
     user.password = newPassword
-    await user.save(validateBeforeSave = false)
+    await user.save({ validateBeforeSave: false })
     return res.status(200).json(new ApiResponse(200, {}, "Password changed successfully"))
 })
 
