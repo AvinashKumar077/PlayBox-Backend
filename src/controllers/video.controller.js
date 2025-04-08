@@ -85,9 +85,12 @@ const getAllVideos = asyncHandler(async (req, res) => {
     ])
 
     if (!videos?.length) {
-        throw new ApiError(404, "No videos found")
+        return res.status(200).json(new ApiResponse(200, [], "No videos found"))
     }
 
+    return res.status(200).json(
+        new ApiResponse(200, videos, "Videos fetched successfully")
+    )
 
 })
 
@@ -116,7 +119,6 @@ const publishAVideo = asyncHandler(async (req, res) => {
     }
 
     try {
-        const duration = await getVideoDuration(videoFileLocalPath);
         const videoFile = await uploadOnCloudinary(videoFileLocalPath);
         if (!videoFile) {
             throw new ApiError(400, "Cloudinary Error: Video file is required");
@@ -124,6 +126,11 @@ const publishAVideo = asyncHandler(async (req, res) => {
         const thumbnail = await uploadOnCloudinary(thumbnailLocalPath);
         if (!thumbnail) {
             throw new ApiError(400, "Cloudinary Error: Video file is required");
+        }
+
+        const duration = videoFile.duration // Get the duration of the video file
+        if (!duration) {
+            throw new ApiError(400, "Cloudinary Error: not able to get duration");
         }
 
         const videoDoc = await Video.create({

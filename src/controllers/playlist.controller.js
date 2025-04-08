@@ -55,26 +55,12 @@ const addVideoToPlaylist = asyncHandler(async (req, res) => {
     if (!isValidObjectId(playlistId) || !isValidObjectId(videoId)) {
         throw new ApiError(400, "Invalid playlist or video ID");
     }
-    const updatedPlaylist = await Playlist.aggregate([
-        {
-            $match: {
-                _id: new mongoose.Types.ObjectId(playlistId)
-            }
+    const updatedPlaylist = await Playlist.findByIdAndUpdate(
+        playlistId,
+        { $addToSet: { videos: videoId } }, // Ensures uniqueness
+        { new: true } // Return the updated document
+    );
 
-        },
-        {
-            $addFields: {
-                videos: {
-                    $setUnion: ["$videos", [new mongoose.Types.ObjectId(videoId)]]
-                }
-            }
-        },
-        {
-            $merge: {
-                into: "playlists",
-            }
-        }
-    ])
     if (!updatedPlaylist) {
         throw new ApiError(500, "Something went wrong while adding video to the playlist")
     }
