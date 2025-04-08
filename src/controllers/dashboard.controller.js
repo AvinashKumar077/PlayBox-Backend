@@ -1,5 +1,6 @@
 import mongoose from "mongoose"
 import { Video } from "../models/video.model.js"
+import { Tweet } from "../models/tweet.model.js"
 import { Subscription } from "../models/subscription.model.js"
 import { Like } from "../models/like.model.js"
 import { ApiError } from "../utils/ApiError.js"
@@ -71,7 +72,7 @@ const getChannelVideos = asyncHandler(async (req, res) => {
 
     // - This ensures that the client knows when a channel has no videos.
     if (!videos || videos.length === 0) {
-        throw new ApiError(404, "No videos found for this channel");
+        return res.status(200).json(new ApiResponse(200, [], "No videos found for this channel"));
     }
 
     res.status(200).json(new ApiResponse(200, videos, "Channel videos fetched successfully"));
