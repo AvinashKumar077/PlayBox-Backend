@@ -43,22 +43,34 @@ const toggleSubscription = asyncHandler(async (req, res) => {
         
    */
 
-
+    // If no subscription exists, create a new one (subscribe)
+    await Subscription.create({ subscriber: subscriberId, channel: channelId });
+    return res
+        .status(201)
+        .json(new ApiResponse(201, {}, "Subscribed successfully"));
 })
 
 // controller to return subscriber list of a channel
 const getUserChannelSubscribers = asyncHandler(async (req, res) => {
-    const { channelId } = req.params
+    const channelId = req.user._id;
+
     if (!isValidObjectId(channelId)) {
         throw new ApiError(400, "Invalid channel ID")
     }
-    const subscribers = await Subscription.find({ channel: channelId }).populate("subscriber", "_id name email")
 
-    if (!subscribers) {
-        throw new ApiError(404, "No subscribers found for this channel")
+    const subscribersDocs = await Subscription.find({
+        channel: channelId,
+    }).populate("subscriber", "_id name email");
+
+
+    if (!subscribersDocs) {
+        throw new ApiError(404, "No subscribers found for this channel");
     }
-
-    return res.status(200).json(new ApiResponse(200, subscribers, "Subscribers fetched successfully"))
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(200, subscribersDocs, "Subscribers fetched successfully")
+        );
     /*
      Subscriber List Fetching - Notes:
  
@@ -78,19 +90,32 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
 
 // controller to return channel list to which user has subscribed
 const getSubscribedChannels = asyncHandler(async (req, res) => {
-    const { subscriberId } = req.params
-    if (!isValidObjectId(subscriberId)) {
-        throw new ApiError(400, "Invalid subscriber ID")
-    }
-    const subscribedChannels = await Subscription.find({ subscriber: subscriberId }).populate("channel", "_id name email")
+    // Controller to get the list of channels a user has subscribed to
+
+    // Extract the subscriber ID from the authenticated user
+    const subscriberId = req.user._id;
+
+    /* 
+  
+       - `Subscription.find({ subscriber: subscriberId })`: Finds all records where this user which is coming from "req.user._id " is the subscriber.
+       - `populate("channel", "_id name email")`: Fetches the channel details (_id, name, email) for each subscription.
+       - Why? Because subscriptions store only IDs. Populating converts them into actual channel objects. */
+
+    const subscribedChannels = await Subscription.find({
+        subscriber: subscriberId,
+    }).populate("channel", "_id name email");
+
+    // If no subscribed channels found, return an error
     if (!subscribedChannels || subscribedChannels.length === 0) {
         throw new ApiError(404, "No subscribed channels found");
     }
-    /*  Why are we checking `subscribedChannels.length === 0`?
-   - `.find()` always returns an array. If empty, that means no subscriptions exist.
-   - Without this check, the user might receive an empty array instead of a proper message.
-*/
 
+    /*  Why are we checking `subscribedChannels.length === 0`?
+       - `.find()` always returns an array. If empty, that means no subscriptions exist.
+       - Without this check, the user might receive an empty array instead of a proper message.
+    */
+
+    // Return a success response with the list of subscribed channels
     return res
         .status(200)
         .json(
@@ -100,7 +125,8 @@ const getSubscribedChannels = asyncHandler(async (req, res) => {
                 "Subscribed channels fetched successfully"
             )
         );
-})
+
+});
 
 export {
     toggleSubscription,
