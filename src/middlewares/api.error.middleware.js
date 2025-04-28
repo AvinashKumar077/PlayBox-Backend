@@ -9,6 +9,7 @@ const errorMiddleware = (err, req, res, next) => {
     }
 
     return res.status(statusCode).json({
+        statusCode,
         success: false,
         message,
         errors: err.errors || [],
