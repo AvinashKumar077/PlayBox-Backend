@@ -76,7 +76,7 @@ const registerUser = asyncHandler(async (req, res) => {
         coverImage: coverImage?.url || "",
         email,
         password,
-        username: username
+        username: username.toLowerCase()
     })
 
 

@@ -8,6 +8,7 @@ const userSchema = new Schema(
             type: String,
             required: true,
             unique: true,
+            lowercase: true,
             trim: true,
             index: true // to make search faster
         },
