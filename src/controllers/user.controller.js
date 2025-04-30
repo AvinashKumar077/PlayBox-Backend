@@ -78,7 +78,7 @@ const registerUser = asyncHandler(async (req, res) => {
         password,
         username: username.toLowerCase()
     })
-
+    const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user._id)
 
     const userCreated = await User.findById(user._id).select(
         "-password -refreshToken"
@@ -91,7 +91,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
     return res
         .status(201)
-        .json(new ApiResponse(200, { user: userCreated }, "User registered successfully"));
+        .json(new ApiResponse(200, { user: userCreated, accessToken, refreshToken }, "User registered successfully"));
 })
 
 const loginUser = asyncHandler(async (req, res) => {
