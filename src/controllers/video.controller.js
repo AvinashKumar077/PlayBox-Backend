@@ -22,67 +22,48 @@ const getAllVideos = asyncHandler(async (req, res) => {
     }
 
     const match = {
-        ...(query ? { title: { $regex: query, $options: "i" } } : {}), // If query exists, match titles that contain the search term (case-insensitive)
-        ...(userId ? { owner: mongoose.Types.ObjectId(userId) } : {}), // If userId exists, filter videos by that owner
+        ...(query ? { title: { $regex: query, $options: "i" } } : {}),
+        ...(userId ? { owner: mongoose.Types.ObjectId(userId) } : {}),
     };
 
     const videos = await Video.aggregate([
         {
-            $match: match, // Filter videos based on the match criteria
+            $match: match,
         },
         {
-            /*
-                $lookup: Joins data from the "users" collection
-                - Fetches user details based on the "owner" field in the videos collection
-                - This allows us to include user information with each video
-            */
             $lookup: {
-                from: "users", // Collection to join with
-                localField: "owner", // Matching "owner" field in the videos collection
-                foreignField: "_id", // Matching "_id" field in the users collection
-                as: "videosByOwner", // The resulting user data will be stored under "videosByOwner"
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "videosByOwner",
             },
         },
         {
             $project: {
-                videoFile: 1, // Include the video file field
-                thumbnail: 1, // Include the thumbnail field
-                title: 1, // Include the title field
-                description: 1, // Include the description field
-                duration: 1, // Include the duration field
-                views: 1, // Include the views field
+                videoFile: 1,
+                thumbnail: 1,
+                title: 1,
+                description: 1,
+                duration: 1,
+                views: 1,
                 owner: {
-                    $arrayElemAt: ["$videosByOwner", 0], // Extract the first element from the "videosByOwner" array
-                }
-            }
+                    $ifNull: [{ $arrayElemAt: ["$videosByOwner", 0] }, null],
+                },
+                ownerExists: { $gt: [{ $size: "$videosByOwner" }, 0] }, // Check if owner exists
+            },
         },
         {
-            /*
-            $sort: Sorting videos based on the specified field
-            - If sortType is "desc", sort in descending order (-1)
-            - If sortType is "asc", sort in ascending order (1)
-            */
             $sort: {
                 [sortBy]: sortType === "desc" ? -1 : 1,
             },
         },
         {
-            /*
-              $skip: Skipping records for pagination
-              - Formula: (page number - 1) * limit
-              - If page = 2 and limit = 10, skips (2-1) * 10 = 10 records
-            */
             $skip: (page - 1) * parseInt(limit),
         },
         {
-            /*
-              $limit: Limits the number of results per page
-              - Ensures that the number of results does not exceed the "limit" value
-            */
             $limit: parseInt(limit),
         },
-
-    ])
+    ]);
 
     if (!videos?.length) {
         return res.status(200).json(new ApiResponse(200, [], "No videos found"))
