@@ -46,6 +46,8 @@ const getAllVideos = asyncHandler(async (req, res) => {
                 description: 1,
                 duration: 1,
                 views: 1,
+                createdAt: 1,
+                updatedAt: 1,
                 owner: {
                     $ifNull: [{ $arrayElemAt: ["$videosByOwner", 0] }, null],
                 },
