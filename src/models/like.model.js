@@ -16,6 +16,7 @@ const likeSchema = new Schema({
     likedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
+        require: true,
     }
 }, { timestamps: true }
 )

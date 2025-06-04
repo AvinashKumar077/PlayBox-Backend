@@ -1,6 +1,7 @@
 import mongoose, { isValidObjectId } from "mongoose"
 import { Video } from "../models/video.model.js"
 import { User } from "../models/user.model.js"
+import { Like } from "../models/like.model.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
@@ -151,26 +152,39 @@ const publishAVideo = asyncHandler(async (req, res) => {
 
 const getVideoAndUpdateViews = asyncHandler(async (req, res) => {
     const { videoId } = req.params;
+    const userId = req.user?._id;
 
     if (!isValidObjectId(videoId)) {
         throw new ApiError(400, "Invalid video ID");
     }
 
-    // Find and update the views atomically
+    // Increment view count
     const video = await Video.findByIdAndUpdate(
         videoId,
         { $inc: { views: 1 } },
         { new: true }
-    ).populate("owner", "-password -refreshToken");
+    ).populate("owner", "-password -refreshToken").lean(); // lean() to allow modifying the object
 
     if (!video) {
         throw new ApiError(404, "Video not found");
     }
 
+    // Check if the current user has liked the video
+    let liked = false;
+    if (userId) {
+        const existingLike = await Like.findOne({
+            video: videoId,
+            likedBy: userId,
+        });
+
+        liked = !!existingLike;
+    }
+
     return res.status(200).json(
-        new ApiResponse(200, video, "Video fetched and view count updated")
+        new ApiResponse(200, { ...video, liked }, "Video fetched and view count updated")
     );
 });
+
 
 
 const updateVideo = asyncHandler(async (req, res) => {

@@ -1,54 +1,48 @@
 import mongoose, { isValidObjectId } from "mongoose"
 import { Like } from "../models/like.model.js"
+import { Video } from "../models/video.model.js";
 import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
 
 const toggleVideoLike = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
-
-    const userId = req.user._id
-
-    //check if the user is authenticated and has a valid ID
+    const { videoId } = req.params;
+    const userId = req.user._id;
     if (!isValidObjectId(videoId)) {
-        throw new ApiError(400, "Invalid video ID")
+        throw new ApiError(400, "Invalid video ID");
     }
 
-    // check if user already liked the video
+    const video = await Video.findById(videoId);
+    if (!video) {
+        throw new ApiError(404, "Video not found");
+    }
+
     const existingLike = await Like.findOne({
         video: videoId,
-        likedBy: userId,
+        likedBy: userId
     });
 
-    // if the user already liked the video, remove the like
+
+    let liked;
 
     if (existingLike) {
-        await Like.findByIdAndDelete(existingLike._id)
-        return res.status(200).json(new ApiResponse(200, existingLike, "video unliked successfully"))
+        await existingLike.deleteOne();
+        video.likeCount = Math.max(0, video.likeCount - 1);
+        liked = false;
+    } else {
+        await Like.create({ video: videoId, likedBy: userId });
+        video.likeCount += 1;
+        liked = true;
     }
 
-    // if the user has not liked the video, create a new like
-    const newLike = await Like.create({
-        video: videoId,
-        likedBy: userId,
-    })
+    await video.save();
 
-    return res.status(201).json(new ApiResponse(201, newLike, "video liked successfully"))
+    return res.status(200).json(new ApiResponse(200, {
+        liked,
+        totalLikes: video.likeCount
+    }, liked ? "Video liked successfully" : "Video unliked successfully"));
+});
 
-
-    /*
-Toggling Likes - Notes: 
-
-👉 Why use `findOne()` before creating a new like?
-- We need to check if the user has already liked the video.
-- Prevents duplicate likes, ensuring one user can only like a video once.
-
-👉 Why use `findByIdAndDelete()` instead of `deleteOne()`?
-- `findByIdAndDelete()` directly removes a document by `_id` in one step.
-- `deleteOne({ ... })` works too, but we already have the exact `_id`, so it's faster.
-
-*/
-})
 
 const toggleCommentLike = asyncHandler(async (req, res) => {
     const { commentId } = req.params
@@ -123,7 +117,7 @@ const getLikedVideos = asyncHandler(async (req, res) => {
     const likedVideos = await Like.find({
         likedBy: userId,
         video: { $exists: true } // filter for video likes only
-    }).populate("video", "_id title url")
+    }).populate("video")
 
     return res.status(200).json(new ApiResponse(200, likedVideos, "liked videos fetched successfully"))
 
