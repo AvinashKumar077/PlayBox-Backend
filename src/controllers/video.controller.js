@@ -151,25 +151,29 @@ const publishAVideo = asyncHandler(async (req, res) => {
     */
 })
 
-const getVideoById = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
-    if (!isValidObjectId(videoId)) {
-        throw new ApiError(400, "Invalid video ID")
-    }
-    const video = await Video.findById(videoId).populate("owner", "name email")
-    if (!video) {
-        throw new ApiError(404, "Video not found")
-    }
-    return res.status(200).json(new ApiResponse(200, video, "Video fetched successfully"))
-    /*
-        Video Retrieval Notes:
+const getVideoAndUpdateViews = asyncHandler(async (req, res) => {
+    const { videoId } = req.params;
 
-        👉 What does `.populate("owner", "name email")` do?
-        - By default, the `owner` field in the video document only contains the owner's `_id`.
-        - `populate()` replaces this ID with an actual object containing the owner's `name` and `email`.
-        - This reduces extra API calls from the frontend to fetch user details separately.
-*/
-})
+    if (!isValidObjectId(videoId)) {
+        throw new ApiError(400, "Invalid video ID");
+    }
+
+    // Find and update the views atomically
+    const video = await Video.findByIdAndUpdate(
+        videoId,
+        { $inc: { views: 1 } },
+        { new: true }
+    ).populate("owner", "name", "email");
+
+    if (!video) {
+        throw new ApiError(404, "Video not found");
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, video, "Video fetched and view count updated")
+    );
+});
+
 
 const updateVideo = asyncHandler(async (req, res) => {
     const { videoId } = req.params
