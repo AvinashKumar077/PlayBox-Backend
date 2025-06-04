@@ -40,16 +40,14 @@ const getAllVideos = asyncHandler(async (req, res) => {
         },
         {
             $project: {
-                videoFile: 1,
                 thumbnail: 1,
                 title: 1,
-                description: 1,
                 duration: 1,
                 views: 1,
                 createdAt: 1,
-                updatedAt: 1,
                 owner: {
-                    $ifNull: [{ $arrayElemAt: ["$videosByOwner", 0] }, null],
+                    username: { $ifNull: [{ $arrayElemAt: ["$videosByOwner.username", 0] }, null] },
+                    avatar: { $ifNull: [{ $arrayElemAt: ["$videosByOwner.avatar", 0] }, null] },
                 },
                 ownerExists: { $gt: [{ $size: "$videosByOwner" }, 0] }, // Check if owner exists
             },
@@ -163,7 +161,7 @@ const getVideoAndUpdateViews = asyncHandler(async (req, res) => {
         videoId,
         { $inc: { views: 1 } },
         { new: true }
-    ).populate("owner", "name", "email");
+    ).populate("owner", "-password -refreshToken");
 
     if (!video) {
         throw new ApiError(404, "Video not found");
