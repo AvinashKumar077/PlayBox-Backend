@@ -95,10 +95,12 @@ const getVideoComments = asyncHandler(async (req, res) => {
             $project: {
                 content: 1,
                 owner: {
-                    $arrayElemAt: ["$OwnerOfComment", 0] // Extract the first element from the owner array
+                    _id: { $arrayElemAt: ["$OwnerOfComment._id", 0] },
+                    username: { $arrayElemAt: ["$OwnerOfComment.username", 0] },
+                    avatar: { $arrayElemAt: ["$OwnerOfComment.avatar", 0] }
                 },
                 video: {
-                    $arrayElemAt: ["$CommentOnWhichVideo", 0] // Extract the first element from the video array
+                    _id: { $arrayElemAt: ["$CommentOnWhichVideo._id", 0] }
                 },
                 createdAt: 1,
             }
@@ -118,8 +120,6 @@ const getVideoComments = asyncHandler(async (req, res) => {
 
 
     ]);
-
-    console.log(comments)
 
     // step 7 check if comments exist
     if (!comments) {
