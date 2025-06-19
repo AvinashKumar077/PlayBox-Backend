@@ -6,7 +6,8 @@ import { asyncHandler } from "../utils/asyncHandler.js"
 
 const getVideoComments = asyncHandler(async (req, res) => {
     const { videoId } = req.params;
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, isOldest } = req.query;
+    const sortOption = isOldest === 'true' ? 1 : -1;
 
     if (!isValidObjectId(videoId)) {
         throw new ApiError(400, "Invalid video ID");
@@ -18,8 +19,11 @@ const getVideoComments = asyncHandler(async (req, res) => {
         {
             $match: {
                 video: videoObjectId,
-                parentComment: null // only fetch top-level comments
+                parentComment: null
             }
+        },
+        {
+            $sort: { createdAt: sortOption }
         },
         {
             $lookup: {
@@ -61,11 +65,9 @@ const getVideoComments = asyncHandler(async (req, res) => {
                 from: "comments",
                 let: { parentId: "$_id" },
                 pipeline: [
-                    {
-                        $match: {
-                            $expr: { $eq: ["$parentComment", "$$parentId"] }
-                        }
-                    },
+                    { $match: { $expr: { $eq: ["$parentComment", "$$parentId"] } } },
+                    { $sort: { createdAt: -1 } },
+                    { $limit: 2 },
                     {
                         $lookup: {
                             from: "users",
@@ -130,11 +132,11 @@ const getVideoComments = asyncHandler(async (req, res) => {
         {
             $addFields: {
                 replyCount: {
-                    $cond: {
-                        if: { $gt: [{ $size: "$replyMeta" }, 0] },
-                        then: { $arrayElemAt: ["$replyMeta.count", 0] },
-                        else: 0
-                    }
+                    $cond: [
+                        { $gt: [{ $size: "$replyMeta" }, 0] },
+                        { $arrayElemAt: ["$replyMeta.count", 0] },
+                        0
+                    ]
                 }
             }
         },
@@ -169,6 +171,47 @@ const getVideoComments = asyncHandler(async (req, res) => {
     }
 
     res.status(200).json(new ApiResponse(200, comments, "Comments fetched successfully"));
+});
+
+const getCommentReplies = asyncHandler(async (req, res) => {
+    const { commentId } = req.params;
+    const { page = 1, limit = 2 } = req.query;
+
+    if (!isValidObjectId(commentId)) {
+        throw new ApiError(400, "Invalid parent comment ID");
+    }
+
+    const replies = await Comment.aggregate([
+        {
+            $match: {
+                parentComment: new mongoose.Types.ObjectId(commentId)
+            }
+        },
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * parseInt(limit) },
+        { $limit: parseInt(limit) },
+        {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "OwnerOfReply"
+            }
+        },
+        {
+            $project: {
+                content: 1,
+                createdAt: 1,
+                owner: {
+                    _id: { $arrayElemAt: ["$OwnerOfReply._id", 0] },
+                    username: { $arrayElemAt: ["$OwnerOfReply.username", 0] },
+                    avatar: { $arrayElemAt: ["$OwnerOfReply.avatar", 0] }
+                }
+            }
+        }
+    ]);
+
+    res.status(200).json(new ApiResponse(200, replies, "Replies fetched successfully"));
 });
 
 
@@ -292,6 +335,7 @@ Comment Deletion Process Notes:
 
 export {
     getVideoComments,
+    getCommentReplies,
     addComment,
     updateComment,
     deleteComment
