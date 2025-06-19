@@ -13,6 +13,11 @@ const commentSchema = new mongoose.Schema({
     owner: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
+    },
+    parentComment: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Comment",
+        default: null, // null for top-level comments
     }
 }, { timestamps: true })
 

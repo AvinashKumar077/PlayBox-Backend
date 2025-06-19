@@ -5,64 +5,23 @@ import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
 
 const getVideoComments = asyncHandler(async (req, res) => {
-    // Function to get comments for a specific video
-
-    /*
-      Step 1: Extract videoId from request parameters
-      - req.params contains route parameters like videoId (e.g., /video/:videoId/comments)
-    */
-    const { videoId } = req.params
-
-    /*
-   Step 2: Extract pagination details from query parameters
-   - If the client sends ?page=2&limit=5, then:
-     - page = 2 (fetch second page of comments)
-     - limit = 5 (fetch 5 comments per page)
-   - If no values are provided, default to page 1 and limit 10
- */
-
-    const { page = 1, limit = 10 } = req.query
-
-    /*
-    Step 3: Validate videoId
-    - MongoDB uses ObjectId format, so we need to check if videoId is a valid ObjectId.
-    - If the ID is invalid, we throw an error.
-  */
+    const { videoId } = req.params;
+    const { page = 1, limit = 10 } = req.query;
 
     if (!isValidObjectId(videoId)) {
-        throw new ApiError(400, "Invalid video ID")
+        throw new ApiError(400, "Invalid video ID");
     }
-
-    /*
-    Step 4: Convert videoId to ObjectId
-    - MongoDB stores IDs as ObjectId, so we need to convert videoId (string) to ObjectId format.
-    - This ensures correct matching in the database.
-  */
 
     const videoObjectId = new mongoose.Types.ObjectId(videoId);
 
-    /*
-    Step 5: Fetch comments using aggregation
-
-  */
-
     const comments = await Comment.aggregate([
         {
-            /*
-                Step 5.1: Match comments related to the specified video ID
-                        - This filters out only comments that belong to the requested video.
-            */
             $match: {
-                video: videoObjectId // Match comments for the specific video
+                video: videoObjectId,
+                parentComment: null // only fetch top-level comments
             }
         },
         {
-            /*
-                Step 5.2: Lookup video details
-                   - Joins the "videos" collection to get details about the video which has the comment
-                   - The result is stored as "CommentOnWhichVideo".
-            */
-
             $lookup: {
                 from: "videos",
                 localField: "video",
@@ -71,12 +30,6 @@ const getVideoComments = asyncHandler(async (req, res) => {
             }
         },
         {
-            /*
-              Step 5.3: Lookup user details (comment owner)
-              - Joins the "users" collection to get details about the user who posted the comment.
-              - The result is stored as "OwnerOfComment".
-            */
-
             $lookup: {
                 from: "users",
                 localField: "owner",
@@ -84,7 +37,6 @@ const getVideoComments = asyncHandler(async (req, res) => {
                 as: "OwnerOfComment"
             }
         },
-        // Lookup total number of likes per comment
         {
             $lookup: {
                 from: "likes",
@@ -93,28 +45,107 @@ const getVideoComments = asyncHandler(async (req, res) => {
                 as: "commentLikes"
             }
         },
-
-        // Add like count and isLiked
         {
             $addFields: {
                 likeCount: { $size: "$commentLikes" },
                 isLiked: {
                     $in: [
-                        { $toObjectId: req.user._id.toString() }, "$commentLikes.likedBy"
+                        { $toObjectId: req.user._id.toString() },
+                        "$commentLikes.likedBy"
                     ]
                 }
             }
         },
         {
-            /*
-             Step 5.4: Restructure the output
-             - $project is used to include only required fields.
-             - $arrayElemAt extracts the first (and only) element from "OwnerOfComment" and "CommentOnWhichVideo".
-             - This avoids unnecessary array nesting in the result.
-            */
-
+            $lookup: {
+                from: "comments",
+                let: { parentId: "$_id" },
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: { $eq: ["$parentComment", "$$parentId"] }
+                        }
+                    },
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "OwnerOfReply"
+                        }
+                    },
+                    {
+                        $lookup: {
+                            from: "likes",
+                            localField: "_id",
+                            foreignField: "comment",
+                            as: "replyLikes"
+                        }
+                    },
+                    {
+                        $addFields: {
+                            likeCount: { $size: "$replyLikes" },
+                            isLiked: {
+                                $in: [
+                                    { $toObjectId: req.user._id.toString() },
+                                    "$replyLikes.likedBy"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        $project: {
+                            content: 1,
+                            createdAt: 1,
+                            likeCount: 1,
+                            isLiked: 1,
+                            owner: {
+                                _id: { $arrayElemAt: ["$OwnerOfReply._id", 0] },
+                                username: { $arrayElemAt: ["$OwnerOfReply.username", 0] },
+                                avatar: { $arrayElemAt: ["$OwnerOfReply.avatar", 0] }
+                            }
+                        }
+                    }
+                ],
+                as: "replies"
+            }
+        },
+        {
+            $lookup: {
+                from: "comments",
+                let: { parentId: "$_id" },
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: { $eq: ["$parentComment", "$$parentId"] }
+                        }
+                    },
+                    {
+                        $count: "count"
+                    }
+                ],
+                as: "replyMeta"
+            }
+        },
+        {
+            $addFields: {
+                replyCount: {
+                    $cond: {
+                        if: { $gt: [{ $size: "$replyMeta" }, 0] },
+                        then: { $arrayElemAt: ["$replyMeta.count", 0] },
+                        else: 0
+                    }
+                }
+            }
+        },
+        {
             $project: {
                 content: 1,
+                createdAt: 1,
+                likeCount: 1,
+                isLiked: 1,
+                replyCount: 1,
+                replies: 1,
                 owner: {
                     _id: { $arrayElemAt: ["$OwnerOfComment._id", 0] },
                     username: { $arrayElemAt: ["$OwnerOfComment.username", 0] },
@@ -122,103 +153,58 @@ const getVideoComments = asyncHandler(async (req, res) => {
                 },
                 video: {
                     _id: { $arrayElemAt: ["$CommentOnWhichVideo._id", 0] }
-                },
-                createdAt: 1,
-                "likeCount": 5,
-                "isLiked": true
+                }
             }
         },
         {
-            /*
-              Step 6: Apply pagination
-              - $skip ignores comments from previous pages ((page - 1) * limit).
-              - $limit restricts the number of comments per request to the specified limit.
-            */
-            $skip: (page - 1) * parseInt(limit),
+            $skip: (page - 1) * parseInt(limit)
         },
-
         {
-            $limit: parseInt(limit),
+            $limit: parseInt(limit)
         }
-
-
     ]);
 
-    // step 7 check if comments exist
     if (!comments) {
-        throw new ApiError(404, "No comments found for this video")
+        throw new ApiError(404, "No comments found for this video");
     }
 
-    // step 8 : send response
+    res.status(200).json(new ApiResponse(200, comments, "Comments fetched successfully"));
+});
 
-    res.status(200).json(new ApiResponse(200, comments, "Comments fetched successfully"))
-
-
-    /*
- Comment Fetching Notes:
-
-
-👉 Why do we use $lookup twice?
- - First $lookup fetches video details (to know which video the comment is on).
- - Second $lookup fetches the user details (who wrote the comment).
-
-👉 Why do we use $arrayElemAt inside $project?
- - $lookup returns an array, even if there's only one matching document.
- - $arrayElemAt extracts the first element, so we get a single object instead of an array.
- 
-👉 Why do we use pagination with $skip and $limit?
- - $skip ignores previous pages of comments ((page - 1) * limit).
- - $limit ensures we don't fetch too many comments at once, improving performance.
- - This prevents overwhelming the database and speeds up response time.
-*/
-})
 
 const addComment = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
-    const { content } = req.body
-
+    const { videoId } = req.params;
+    const { content, parentComment } = req.body;
 
     if (!isValidObjectId(videoId)) {
-        throw new ApiError(400, "Invalid video ID")
+        throw new ApiError(400, "Invalid video ID");
+    }
+
+    if (parentComment && !isValidObjectId(parentComment)) {
+        throw new ApiError(400, "Invalid parent comment ID");
     }
 
     if (!req.user) {
-        throw new ApiError(401, "Unauthorized")
+        throw new ApiError(401, "Unauthorized");
     }
 
     if (!content) {
-        throw new ApiError(400, "Content is required")
+        throw new ApiError(400, "Content is required");
     }
 
-    const addComment = await Comment.create({
+    const newComment = await Comment.create({
         content,
-        video: videoId, // linking comment to the video
-        owner: req.user._id // linking the comment to the logged in user
-    })
+        video: videoId,
+        owner: req.user._id,
+        parentComment: parentComment || null
+    });
 
-    if (!addComment) {
-        throw new ApiError(500, "Failed to add comment")
+    if (!newComment) {
+        throw new ApiError(500, "Failed to add comment");
     }
-    res.status(201).json(new ApiResponse(201, { addComment, videoId }, "Comment added successfully"))
 
-    /*
- Commenting System Notes:
-
-
-  👉 Why check if the user is logged in?
-     - Comments should only be made by registered users.
-     - Imagine a chat where random anonymous people spam messages. Not fun, right?
-
-  👉 Why check if content is empty?
-     - A comment must have text, otherwise it wouldn't make sense!
-     - It’s like sending a blank text message to a friend—they’d be confused!
-
-  👉 Why store 'owner' and 'video' in the comment?
-     - This allows us to track who made the comment and on which video.
-     - If we didn't store this info, we'd have random comments with no way to know where they belong.
-*/
-
-})
+    res.status(201).json(new ApiResponse(201, newComment, "Comment added successfully"));
+});
 
 const updateComment = asyncHandler(async (req, res) => {
     const { commentId } = req.params
