@@ -84,6 +84,27 @@ const getVideoComments = asyncHandler(async (req, res) => {
                 as: "OwnerOfComment"
             }
         },
+        // Lookup total number of likes per comment
+        {
+            $lookup: {
+                from: "likes",
+                localField: "_id",
+                foreignField: "comment",
+                as: "commentLikes"
+            }
+        },
+
+        // Add like count and isLiked
+        {
+            $addFields: {
+                likeCount: { $size: "$commentLikes" },
+                isLiked: {
+                    $in: [
+                        { $toObjectId: req.user._id.toString() }, "$commentLikes.likedBy"
+                    ]
+                }
+            }
+        },
         {
             /*
              Step 5.4: Restructure the output
@@ -103,6 +124,8 @@ const getVideoComments = asyncHandler(async (req, res) => {
                     _id: { $arrayElemAt: ["$CommentOnWhichVideo._id", 0] }
                 },
                 createdAt: 1,
+                "likeCount": 5,
+                "isLiked": true
             }
         },
         {
