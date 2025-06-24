@@ -67,7 +67,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
                 pipeline: [
                     { $match: { $expr: { $eq: ["$parentComment", "$$parentId"] } } },
                     { $sort: { createdAt: -1 } },
-                    { $limit: 2 },
+                    { $limit: 5 },
                     {
                         $lookup: {
                             from: "users",
@@ -175,7 +175,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
 
 const getCommentReplies = asyncHandler(async (req, res) => {
     const { commentId } = req.params;
-    const { page = 1, limit = 2 } = req.query;
+    const { page = 1, limit = 5 } = req.query;
 
     if (!isValidObjectId(commentId)) {
         throw new ApiError(400, "Invalid parent comment ID");
