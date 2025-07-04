@@ -2,6 +2,7 @@ import mongoose, { isValidObjectId } from "mongoose"
 import { Video } from "../models/video.model.js"
 import { User } from "../models/user.model.js"
 import { Like } from "../models/like.model.js"
+import { Subscription } from "../models/subscription.model.js";
 import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
@@ -169,19 +170,50 @@ const getVideoAndUpdateViews = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Video not found");
     }
 
-    // Check if the current user has liked the video
-    let liked = false;
-    if (userId) {
-        const existingLike = await Like.findOne({
-            video: videoId,
-            likedBy: userId,
-        });
+    // Step 2: Prepare tasks to run in parallel
+    const tasks = [];
 
-        liked = !!existingLike;
+    if (userId) {
+        // Check if user liked the video
+        tasks.push(
+            Like.findOne({
+                video: videoId,
+                likedBy: userId,
+            })
+        );
+
+        // Check if user subscribed to the owner
+        if (video.owner && video.owner._id) {
+            tasks.push(
+                Subscription.findOne({
+                    subscriber: userId,
+                    channel: video.owner._id,
+                })
+            );
+        } else {
+            // still push a resolved value for alignment
+            tasks.push(Promise.resolve(null));
+        }
+    } else {
+        tasks.push(Promise.resolve(null)); // liked
+        tasks.push(Promise.resolve(null)); // isSubscribed
     }
 
+    // Fetch subscriber count (doesn't depend on user)
+    const subscriberCountPromise = Subscription.countDocuments({
+        channel: video.owner?._id,
+    });
+
+    tasks.push(subscriberCountPromise);
+
+    // Step 3: Wait for all tasks
+    const [likeDoc, subscriptionDoc, subscriberCount] = await Promise.all(tasks);
+
+    const liked = !!likeDoc;
+    const isSubscribed = !!subscriptionDoc;
+
     return res.status(200).json(
-        new ApiResponse(200, { ...video, liked }, "Video fetched and view count updated")
+        new ApiResponse(200, { ...video, liked, isSubscribed, subscriberCount }, "Video fetched and view count updated")
     );
 });
 
